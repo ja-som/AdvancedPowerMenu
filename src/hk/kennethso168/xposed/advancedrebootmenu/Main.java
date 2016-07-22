@@ -26,9 +26,10 @@ public class Main implements IXposedHookLoadPackage, IXposedHookZygoteInit{
     @Override
     public void initZygote(StartupParam startupParam) throws Throwable {
     	pref = new XSharedPreferences(PACKAGE_NAME);
+	    DualBoot.init();
     }
     
-    private static void log(String message) {
+    public static void log(String message) {
     	if(WRITE_LOGS) XposedBridge.log(LOG_APP_NAME + ": " + message);
     }
     

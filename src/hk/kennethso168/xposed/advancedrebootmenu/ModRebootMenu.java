@@ -2,6 +2,7 @@ package hk.kennethso168.xposed.advancedrebootmenu;
 
 import hk.kennethso168.xposed.advancedrebootmenu.actions.AntiTheftHelperAction;
 import hk.kennethso168.xposed.advancedrebootmenu.actions.ExpandStatusBarAction;
+import hk.kennethso168.xposed.advancedrebootmenu.actions.FakePowerOffAction;
 import hk.kennethso168.xposed.advancedrebootmenu.actions.QuickDialAction;
 import hk.kennethso168.xposed.advancedrebootmenu.actions.ScreenshotAction;
 import hk.kennethso168.xposed.advancedrebootmenu.actions.ToggleDataAction;
@@ -25,6 +26,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.res.Resources;
 import android.graphics.drawable.Drawable;
+import android.os.Build;
 import android.os.PowerManager;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -33,19 +35,21 @@ import android.view.WindowManager;
 import android.widget.BaseAdapter;
 import android.widget.ImageView;
 import android.widget.TextView;
-import android.widget.Toast;
+
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XC_MethodHook.Unhook;
 import de.robv.android.xposed.XC_MethodReplacement;
 import de.robv.android.xposed.XSharedPreferences;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
+import de.robv.android.xposed.XposedHelpers.ClassNotFoundError;
 
 public class ModRebootMenu {
     private static final String CLASS = "ModRebootMenu.java";
     public static final String PACKAGE_NAME = "android";
     public static final String CLASS_GLOBAL_ACTIONS = "com.android.internal.policy.impl.GlobalActions";
     public static final String CLASS_ACTION = "com.android.internal.policy.impl.GlobalActions.Action";
+    public static final String CLASS_SILENT_TRISTATE_ACTION = "com.android.internal.policy.impl.GlobalActions$SilentModeTriStateAction";
     
     private static Context mContext;
     private static Context armContext;
@@ -53,6 +57,10 @@ public class ModRebootMenu {
     private static String mRebootSoftStr;
     private static String mRecoveryStr;
     private static String mBootloaderStr;
+    private static String mFlashmodeStr;
+    private static String mRebootSystem1Str;
+    private static String mRebootSystem2Str;
+    private static String mRebootSafeStr;
     private static String mScreenshotLabel;
     private static String mQuickDialLabel;
     private static String mExpandStatusBarLabel;
@@ -64,18 +72,21 @@ public class ModRebootMenu {
     private static Drawable mRebootSoftIcon;
     private static Drawable mRecoveryIcon;
     private static Drawable mBootloaderIcon;
+    private static Drawable mFlashmodeIcon;
     private static Drawable mScreenshotIcon;
     private static Drawable mQuickDialIcon;
     private static Drawable mExpandStatusBarIcon;
     private static Drawable mToggleDataIcon;
     private static Drawable mDeviceLockedIcon;
-    private static int[] rebootSubMenu = new int[4];
+    private static Drawable mPowerOffIcon;
+    private static int[] rebootSubMenu = new int[5];
     private static boolean normalRebootOnly = false;
     private static boolean antiTheftHelperOn = false;
     private static List<IIconListAdapterItem> mRebootItemList;
     private static String mRebootConfirmStr;
     private static String mRebootConfirmRecoveryStr;
     private static String mRebootConfirmBootloaderStr;
+    private static String mRebootConfirmFlashmodeStr;
     private static String noLockedOffDialogTitle;
     private static String noLockedOffDialogMsg;
     private static Unhook mRebootActionHook;
@@ -101,6 +112,9 @@ public class ModRebootMenu {
     private static final int SEQ_REBOOT_SOFT = 1;
     private static final int SEQ_REBOOT_RECOVERY = 2;
     private static final int SEQ_REBOOT_BOOTLOADER = 3;
+    private static final int SEQ_REBOOT_FLASHMODE = 4;
+    private static final int SEQ_REBOOT_SYSTEM1 = 5;
+    private static final int SEQ_REBOOT_SYSTEM2 = 6;
     
     //constants for modes of showing confirmation dialogs
     private static final int VALUE_ENABLE_DIALOGS = 0;
@@ -122,6 +136,7 @@ public class ModRebootMenu {
         try {
             final Class<?> globalActionsClass = XposedHelpers.findClass(CLASS_GLOBAL_ACTIONS, classLoader);
             final Class<?> actionClass = XposedHelpers.findClass(CLASS_ACTION, classLoader);
+            
 
             XposedBridge.hookAllConstructors(globalActionsClass, new XC_MethodHook() {
                @Override
@@ -139,6 +154,10 @@ public class ModRebootMenu {
                    mRebootSoftStr = armRes.getString(R.string.reboot_soft);
                    mRecoveryStr = armRes.getString(R.string.reboot_recovery);
                    mBootloaderStr = armRes.getString(R.string.reboot_bootloader);
+                   mFlashmodeStr = armRes.getString(R.string.reboot_flashmode);
+                   mRebootSystem1Str = armRes.getString(R.string.reboot_system1);
+                   mRebootSystem2Str = armRes.getString(R.string.reboot_system2);
+                   mRebootSafeStr = armRes.getString(R.string.reboot_safe);
                    
                    mScreenshotLabel = armRes.getString(R.string.take_screenshot);
                    mQuickDialLabel = armRes.getString(R.string.quick_dial);
@@ -163,6 +182,7 @@ public class ModRebootMenu {
                    int[] mRebootSoftIconSet = {R.drawable.ic_lock_reboot_soft, R.drawable.ic_lock_reboot_soft_dark, R.drawable.ic_lock_reboot_soft_color, R.drawable.ic_lock_reboot_soft_existenz};
                    int[] mRecoveryIconSet = {R.drawable.ic_lock_recovery, R.drawable.ic_lock_recovery_dark, R.drawable.ic_lock_recovery_color, R.drawable.ic_lock_recovery_existenz};
                    int[] mBootloaderIconSet = {R.drawable.ic_lock_reboot_bootloader, R.drawable.ic_lock_reboot_bootloader_dark, R.drawable.ic_lock_reboot_bootloader_color, R.drawable.ic_lock_reboot_bootloader_existenz};
+                   int[] mFlashmodeIconSet = {R.drawable.ic_lock_reboot_bootloader, R.drawable.ic_lock_reboot_bootloader_dark, R.drawable.ic_lock_reboot_bootloader_color, R.drawable.ic_lock_reboot_bootloader_existenz};
                    int[] mExpandStatusBarIconSet = {R.drawable.ic_expand_statusbar, R.drawable.ic_expand_statusbar_dark, R.drawable.ic_expand_statusbar_color, R.drawable.ic_expand_statusbar_existenz};
                    int[] mToggleDataIconSet = {R.drawable.ic_data, R.drawable.ic_data_dark, R.drawable.ic_data_color, R.drawable.ic_data_existenz};
                    int[] mDeviceLockedIconSet = {R.drawable.ic_device_locked, R.drawable.ic_device_locked_dark, R.drawable.ic_device_locked_color, R.drawable.ic_device_locked_existenz};
@@ -180,11 +200,24 @@ public class ModRebootMenu {
                    mRebootSoftIcon = armRes.getDrawable(mRebootSoftIconSet[IconColorInt]);
                    mRecoveryIcon = armRes.getDrawable(mRecoveryIconSet[IconColorInt]);
                    mBootloaderIcon = armRes.getDrawable(mBootloaderIconSet[IconColorInt]);
+                   mFlashmodeIcon = armRes.getDrawable(mFlashmodeIconSet[IconColorInt]);
+                   mPowerOffIcon = armRes.getDrawable(R.drawable.ic_wip); //as a fallback
 
                    antiTheftHelperOn = pref.getBoolean("pref_no_locked_off", false);
                    boolean SoftEnabled = pref.getBoolean("pref_rebootsub_soft", true);
                    boolean RecoveryEnabled = pref.getBoolean("pref_rebootsub_recovery", true);
                    boolean BootloaderEnabled = pref.getBoolean("pref_rebootsub_bootloader", true);
+                   boolean FlashmodeEnabled = pref.getBoolean("pref_rebootsub_flashmode", true);
+                   boolean prefSystem12Enabled = pref.getBoolean("pref_rebootsub_system12", false);
+                   log("pref_rebootsub_system12 = " + prefSystem12Enabled);
+                   boolean System2Enabled = false;
+                   boolean System1Enabled = false;
+                   if(prefSystem12Enabled) {
+                	   System2Enabled = DualBoot.getSyspart()==0;
+                	   System1Enabled = DualBoot.getSyspart()==1 || !System2Enabled;
+                   }
+                   log("System1Enabled = " + System1Enabled);
+                   log("System2Enabled = " + System2Enabled);
                    int cnt = 0;
                    
                    mRebootItemList = new ArrayList<IIconListAdapterItem>();
@@ -207,10 +240,26 @@ public class ModRebootMenu {
                 	   rebootSubMenu[cnt] = SEQ_REBOOT_BOOTLOADER;
                 	   cnt++;
                    }
+                   if(FlashmodeEnabled && Build.MANUFACTURER.toLowerCase().contains("sony")){
+                	   mRebootItemList.add(new BasicIconListItem(mFlashmodeStr, null, mFlashmodeIcon, null));
+                	   rebootSubMenu[cnt] = SEQ_REBOOT_FLASHMODE;
+                	   cnt++;
+                   }
+                   if(System1Enabled&&DualBoot.supportsDualboot()){
+                       mRebootItemList.add(new BasicIconListItem(mRebootSystem1Str, null, mRebootIcon, null));
+                       rebootSubMenu[cnt] = SEQ_REBOOT_SYSTEM1;
+                       cnt++;
+                   }
+                   if(System2Enabled&&DualBoot.supportsDualboot()){
+                       mRebootItemList.add(new BasicIconListItem(mRebootSystem2Str, null, mRebootIcon, null));
+                       rebootSubMenu[cnt] = SEQ_REBOOT_SYSTEM2;
+                       cnt++;
+                       }
                    if(cnt==1) normalRebootOnly = true;
                    mRebootConfirmStr = armRes.getString(R.string.reboot_confirm);
                    mRebootConfirmRecoveryStr = armRes.getString(R.string.reboot_confirm_recovery);
                    mRebootConfirmBootloaderStr = armRes.getString(R.string.reboot_confirm_bootloader);
+                   mRebootConfirmFlashmodeStr = armRes.getString(R.string.reboot_confirm_flashmode);
 
                    log("GlobalActions constructed, resources set.");
                }
@@ -254,12 +303,37 @@ public class ModRebootMenu {
                     // 1) check if Action has mIconResId field or mMessageResId field
                     // 2) check if the name of the corresponding resource contains "reboot" or "restart" substring
                     log("Searching for existing reboot, screenshot and poweroff action item...");
+                    final boolean removeVolumeATH = pref.getBoolean("pref_ath_volume_toggle", false);
+                    final boolean removeVolumeATHWorkaround = pref.getBoolean("pref_ath_volume_toggle_workaround", false);
+                    final boolean removeVolume = pref.getBoolean("pref_remove_volume", false);
+                    final boolean removeVolumeWorkaround = pref.getBoolean("pref_remove_volume_workaround", false);
                     Object rebootActionItem = null;
                     Object screenshotActionItem = null;
                     Object powerOffActionItem = null;
                     Object airplaneActionItem = null;
+                    Object volumeTristateActionItem = null;
+                    Class<?> tristateClass = null;
                     Resources res = mContext.getResources();
+                    if (removeVolumeATH || removeVolume){
+                    	log("removeVolumeATH or removeVolume enabled");
+                    	try{
+                    		tristateClass = XposedHelpers.findClass(CLASS_SILENT_TRISTATE_ACTION, classLoader);
+                    	}catch (ClassNotFoundError cnfe){
+                    		log("error: tristateClass cannot be found!");
+                    		if (removeVolumeATHWorkaround || removeVolumeWorkaround){
+                    			log("removeVolume (ATH or not) workaround enabled. use the last object as the volume tristate object");
+                    			volumeTristateActionItem = mItems.get(mItems.size()-1);
+                    		}		
+                    	}
+                    }else{
+                    	log("removeVolumeATH and removeVolume disabled");
+                    }
+                    
                     for (Object o : mItems) {
+                    	if ((tristateClass != null)&&tristateClass.isInstance(o)){
+                    		log("successfully found the volume tristate object");
+                    		volumeTristateActionItem = o;
+                    	}
                     	// search for drawable
                         try {
                             Field f = XposedHelpers.findField(o.getClass(), "mIconResId");
@@ -274,6 +348,7 @@ public class ModRebootMenu {
                             if (resName.contains("power") || resName.contains("shutdown") 
                             		|| resName.contains("shut")||resName.contains("off")) {
                                 powerOffActionItem = o;
+                                mPowerOffIcon = res.getDrawable((Integer) f.get(o));
                             }
                             if (resName.contains("airplane")){
                             	airplaneActionItem = o;
@@ -303,6 +378,7 @@ public class ModRebootMenu {
                             if (resName.contains("airplane")){
                             	airplaneActionItem = o;
                             }
+                            log(o.toString());
                         } catch (NoSuchFieldError nfe) {
                         	// continue
                         } catch (Resources.NotFoundException resnfe) { 
@@ -326,19 +402,31 @@ public class ModRebootMenu {
                     final boolean removeReboot = pref.getBoolean("pref_remove_reboot", false);
                     final boolean removeScreenshot = pref.getBoolean("pref_remove_screenshot", false);
                     final boolean removeAirplane = pref.getBoolean("pref_remove_airplane", false);
+                    
                     KeyguardManager myKM = (KeyguardManager) mContext.getSystemService(Context.KEYGUARD_SERVICE);
                     if( myKM.inKeyguardRestrictedInputMode()&&antiTheftHelperOn) {
                     	if(powerOffActionItem != null){
                     		mItems.remove(powerOffActionItem);
                     		afterPowerPos--;
                     		afterRebootPos--;
+                    		BaseAdapter mAdapter = (BaseAdapter) XposedHelpers.getObjectField(param.thisObject, "mAdapter");
+                            mAdapter.notifyDataSetChanged();
                     	}
                     	if(rebootActionItem != null){
                     		mItems.remove(rebootActionItem);
                     		afterRebootPos--;
+                    		BaseAdapter mAdapter = (BaseAdapter) XposedHelpers.getObjectField(param.thisObject, "mAdapter");
+                            mAdapter.notifyDataSetChanged();
                     	}
                     	if(airplaneActionItem != null){
                     		mItems.remove(airplaneActionItem);
+                    		BaseAdapter mAdapter = (BaseAdapter) XposedHelpers.getObjectField(param.thisObject, "mAdapter");
+                            mAdapter.notifyDataSetChanged();
+                    	}
+                    	if(removeVolumeATH){
+                    		mItems.remove(volumeTristateActionItem);
+                    		BaseAdapter mAdapter = (BaseAdapter) XposedHelpers.getObjectField(param.thisObject, "mAdapter");
+                            mAdapter.notifyDataSetChanged();
                     	}
                         BaseAdapter mAdapter = (BaseAdapter) XposedHelpers.getObjectField(param.thisObject, "mAdapter");
                         mAdapter.notifyDataSetChanged();
@@ -347,12 +435,23 @@ public class ModRebootMenu {
                     	if(mItems.remove(rebootActionItem)){
                     		afterRebootPos--;
                     	}
+                    	BaseAdapter mAdapter = (BaseAdapter) XposedHelpers.getObjectField(param.thisObject, "mAdapter");
+                        mAdapter.notifyDataSetChanged();
                     }
                     if(removeScreenshot && !screenshotEnabled){
                     	mItems.remove(screenshotActionItem);
+                    	BaseAdapter mAdapter = (BaseAdapter) XposedHelpers.getObjectField(param.thisObject, "mAdapter");
+                        mAdapter.notifyDataSetChanged();
                     }
                     if(removeAirplane){
                     	mItems.remove(airplaneActionItem);
+                    	BaseAdapter mAdapter = (BaseAdapter) XposedHelpers.getObjectField(param.thisObject, "mAdapter");
+                        mAdapter.notifyDataSetChanged();
+                    }
+                    if(removeVolume){
+                    	mItems.remove(volumeTristateActionItem);
+                    	BaseAdapter mAdapter = (BaseAdapter) XposedHelpers.getObjectField(param.thisObject, "mAdapter");
+                        mAdapter.notifyDataSetChanged();
                     }
                     
                     
@@ -360,47 +459,78 @@ public class ModRebootMenu {
                     // IV. Add/replace action items and update positions accordingly
 
                     if( myKM.inKeyguardRestrictedInputMode()&&antiTheftHelperOn&&(!hideATHDesc)) {
-                    	Object action = Proxy.newProxyInstance(classLoader, new Class<?>[] { actionClass },
-                                new AntiTheftHelperAction(mContext, mDeviceLockedLabel, mDeviceLockedIcon, noLockedOffDialogTitle, noLockedOffDialogMsg));
-                        mItems.add(0, action);
+                    	Boolean fakePowerOffEnabled = pref.getBoolean("pref_ath_fake_poweroff", false);
+                    	Object action;
+                    	if(fakePowerOffEnabled){
+                    		action = Proxy.newProxyInstance(classLoader, new Class<?>[] { actionClass },
+                            	new FakePowerOffAction(mContext, mPowerOffIcon));
+                    	}else{
+                    		action = Proxy.newProxyInstance(classLoader, new Class<?>[] { actionClass },
+                                    new AntiTheftHelperAction(mContext, mDeviceLockedLabel, mDeviceLockedIcon, noLockedOffDialogTitle, noLockedOffDialogMsg));
+                    	}
+                        powerOffActionItem = action;
+                    	mItems.add(0, action);
                         afterPowerPos++;
                         afterRebootPos++;
                         BaseAdapter mAdapter = (BaseAdapter) XposedHelpers.getObjectField(param.thisObject, "mAdapter");
                         mAdapter.notifyDataSetChanged();
+                        
                     }
                     
-                    if(advRebootEnabled){
+                    final boolean rebootWorkaroundEnabled = pref.getBoolean("pref_reboot_workaround", false);
+                    if(advRebootEnabled && (!(myKM.inKeyguardRestrictedInputMode()&&antiTheftHelperOn))){
 	                    if (rebootActionItem != null) {
-	                        log("Existing Reboot action item found! Replacing onPress()");
-	                        mRebootActionHook = XposedHelpers.findAndHookMethod(rebootActionItem.getClass(), 
-	                                "onPress", new XC_MethodReplacement () {
-	                            @Override
-	                            protected Object replaceHookedMethod(MethodHookParam param) throws Throwable {
-	                                if(normalRebootOnly){
-	                                	KeyguardManager myKM = (KeyguardManager) mContext.getSystemService(Context.KEYGUARD_SERVICE);
-	                                    if( myKM.inKeyguardRestrictedInputMode()&&antiTheftHelperOn) {
-	                                    	log("Is at lockscreen and shutdown protection is on");
-	                                    	showLockedDialog();
-	                                    }else{
-		                                	handleReboot(mContext, mRebootStr, SEQ_REBOOT_NORMAL);
-	                                    }
-	                                }else{
-	                                	showDialog();
-	                                }
-	                                return null;
-	                            }
-	                        });
-	                    } else if(!(myKM.inKeyguardRestrictedInputMode()&&antiTheftHelperOn)){
-	                        log("Existing Reboot action item NOT found! Adding new RebootAction item");
+	                    	log("Existing Reboot action item found!");
+	                    	if(rebootWorkaroundEnabled){
+	                    		log("Replacing onPress() of existing reboot action item");
+		                        mRebootActionHook = XposedHelpers.findAndHookMethod(rebootActionItem.getClass(), 
+		                                "onPress", new XC_MethodReplacement () {
+				                            @Override
+				                            protected Object replaceHookedMethod(MethodHookParam param) throws Throwable {
+				                                if(normalRebootOnly){
+				                                	KeyguardManager myKM = (KeyguardManager) mContext.getSystemService(Context.KEYGUARD_SERVICE);
+				                                    if( myKM.inKeyguardRestrictedInputMode()&&antiTheftHelperOn) {
+				                                    	log("Is at lockscreen and shutdown protection is on");
+				                                    	showLockedDialog();
+				                                    }else{
+					                                	handleReboot(mContext, mRebootStr, SEQ_REBOOT_NORMAL);
+				                                    }
+				                                }else{
+				                                	showDialog();
+				                                }
+				                                return null;
+		                            }
+		                        });
+	                    	}else{
+	                    		log("Removing onPress() of existing reboot action item");
+	                    		mItems.remove(rebootActionItem);
+	                    		afterRebootPos--;
+	                    		BaseAdapter mAdapter = (BaseAdapter) XposedHelpers.getObjectField(param.thisObject, "mAdapter");
+	                            mAdapter.notifyDataSetChanged();
+	                    		log("Adding back new RebootAction item");
+	                            Object action = Proxy.newProxyInstance(classLoader, new Class<?>[] { actionClass }, 
+	                                    new RebootAction());
+	                            log("afterRebootPos = "+afterRebootPos);
+	                            log("afterPowerPos = "+afterPowerPos);
+	                            mItems.add(afterPowerPos, action);
+	                            rebootActionItem = action;
+	                            afterRebootPos++;
+	                            mAdapter.notifyDataSetChanged();
+	                    	}
+	                    }else{
+	                    	log("Existing Reboot action item NOT found! Adding new RebootAction item");
 
-	                        Object action = Proxy.newProxyInstance(classLoader, new Class<?>[] { actionClass }, 
-	                                new RebootAction());
-	                        mItems.add(afterPowerPos, action);
-	                        afterRebootPos++;
-	                        BaseAdapter mAdapter = (BaseAdapter) XposedHelpers.getObjectField(param.thisObject, "mAdapter");
-	                        mAdapter.notifyDataSetChanged(); 
-
+                            Object action = Proxy.newProxyInstance(classLoader, new Class<?>[] { actionClass }, 
+                                    new RebootAction());
+                            mItems.add(afterPowerPos, action);
+                            afterRebootPos++;
+                            rebootActionItem = action;
+                            BaseAdapter mAdapter = (BaseAdapter) XposedHelpers.getObjectField(param.thisObject, "mAdapter");
+                            mAdapter.notifyDataSetChanged();
 	                    }
+                        log("rebootActionItem "+(rebootActionItem==null?"is null":"is not null")); 
+
+	                    
                     }
                     if(screenshotEnabled){
 	                    if (screenshotActionItem != null) {
@@ -438,6 +568,7 @@ public class ModRebootMenu {
                     if (dataToggleEnabled && !(myKM.inKeyguardRestrictedInputMode()&&antiTheftHelperOn)){
                     	Object action = Proxy.newProxyInstance(classLoader, new Class<?>[] { actionClass },
                                 new ToggleDataAction(mContext, mToggleDataOnLabel, mToggleDataOffLabel, mToggleDataIcon));
+                    	log("rebootActionItem "+(rebootActionItem==null?"is null":"is not null"));
                         mItems.add(afterRebootPos, action);
                         BaseAdapter mAdapter = (BaseAdapter) XposedHelpers.getObjectField(param.thisObject, "mAdapter");
                         mAdapter.notifyDataSetChanged();
@@ -467,6 +598,45 @@ public class ModRebootMenu {
         }
     }
 
+//    private static int getAfterPowerPos(List<Object> mItems, Object powerItem){
+//    	int size = mItems.size();
+//    	if(powerItem != null){
+//    		int index = mItems.indexOf(powerItem) + 1;
+//    		if(index>size){
+//    			log("obtained index > size, returning size = "+size);
+//    			return size;
+//    		}else{
+//    			log("successfully determined, returning index = "+index);
+//    			return index;
+//    		}
+//    	}else{
+//    		log("powerItem NOT found, returning 0");
+//    		return 0;
+//    	}
+//    }
+//    private static int getAfterRebootPos(List<Object> mItems, Object powerItem, Object rebootItem){	
+//    	int size = mItems.size();
+//    	if(rebootItem != null){
+//    		log("Index of reboot item="+mItems.indexOf(rebootItem));
+//    		int index = (int) mItems.indexOf(rebootItem);
+//    		if(index!=-1){
+//    			int pos = mItems.indexOf(rebootItem) + 1;
+//        		if(pos>size){
+//        			log("AfterRebootPos: obtained index > size, returning size = "+size);
+//        			return size;
+//        		}else{
+//        			log("AfterRebootPos: successfully determined, returning index = "+pos);
+//        			return pos;
+//        		}
+//    		}else{
+//    			log("rebootItem NOT found, returning afterPowerPos");
+//    			return getAfterPowerPos(mItems, powerItem);
+//    		}
+//    		
+//    	}
+//    	log("Error: rebootItem is null");
+//    	return 0;
+//    }
     private static void showDialog() {
         if (mContext == null) {
             log("mContext is null - aborting");
@@ -523,12 +693,14 @@ public class ModRebootMenu {
     private static void handleReboot(Context context, String caption, final int mode) {
         try {
             String message;
-            if(mode == 0 || mode == 1){
-            	message = mRebootConfirmStr;
-            }else if (mode == 2){
+            if (mode == SEQ_REBOOT_RECOVERY){
             	message = mRebootConfirmRecoveryStr;
-            }else{
+            }else if (mode == SEQ_REBOOT_BOOTLOADER){
             	message = mRebootConfirmBootloaderStr;
+            }else if (mode == SEQ_REBOOT_FLASHMODE){
+            	message = mRebootConfirmFlashmodeStr;
+            }else{
+            	message = mRebootConfirmStr;
             }
             xPref.reload();
             String showDialogMode = xPref.getString("pref_confirm_dialog", "3");  //3 is a temp indicator for error
@@ -594,6 +766,17 @@ public class ModRebootMenu {
         } else if (mode == SEQ_REBOOT_BOOTLOADER){
         	final PowerManager pm = (PowerManager) mContext.getSystemService(Context.POWER_SERVICE);
 			pm.reboot("bootloader");
+        } else if (mode == SEQ_REBOOT_FLASHMODE){
+        	final PowerManager pm = (PowerManager) mContext.getSystemService(Context.POWER_SERVICE);
+			pm.reboot("oem-53");
+	    } else if (mode == SEQ_REBOOT_SYSTEM1){
+        	final PowerManager pm = (PowerManager) mContext.getSystemService(Context.POWER_SERVICE);
+        	DualBoot.setDualSystemBootmode("boot-system0");
+        	pm.reboot(null);
+        } else if (mode == SEQ_REBOOT_SYSTEM2){
+        	final PowerManager pm = (PowerManager) mContext.getSystemService(Context.POWER_SERVICE);
+        	DualBoot.setDualSystemBootmode("boot-system1");
+        	pm.reboot(null);
         }
     }
     

@@ -14,10 +14,11 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.res.Resources;
+import android.os.Build;
 import android.os.Bundle;
-import android.preference.Preference;
-import android.preference.Preference.OnPreferenceClickListener;
+import android.preference.CheckBoxPreference;
 import android.preference.PreferenceFragment;
+import android.preference.PreferenceScreen;
 import de.robv.android.xposed.XposedBridge;
 
 public class Settings extends Activity {
@@ -76,6 +77,8 @@ public class Settings extends Activity {
 		public static final String KEY_PREF_APP_INFO = "pref_app_info";
 		public static final String KEY_PREF_HIDE_IC_LAUNCHER = "pref_hide_ic_launcher";
 		public static final String KEY_PREF_QUICK_DIAL_NUMBER = "pref_quick_dial_number";
+		public static final String KEY_PREF_REBOOT_WORKAROUND = "pref_reboot_workaround";
+		public static final String KEY_PREF_ENABLE_REBOOT = "pref_enable_reboot";
 		public static String disabledStr;
 		public static String defaultStr;
 		
@@ -98,6 +101,19 @@ public class Settings extends Activity {
 				findPreference(key_child).setEnabled(false);
 			}else{
 				findPreference(key_child).setEnabled(true);
+			}
+		}
+		
+		public void updateDependencyFromCheckBoxPref(String key_master, String key_child, Boolean reverse){
+			CheckBoxPreference masterPref = (CheckBoxPreference) findPreference(key_master);
+			boolean childPrefEnable = masterPref.isChecked();
+			if(reverse){
+				childPrefEnable = !childPrefEnable;
+			}
+			if (childPrefEnable){
+				findPreference(key_child).setEnabled(true);
+			}else{
+				findPreference(key_child).setEnabled(false);
 			}
 		}
 		
@@ -163,20 +179,33 @@ public class Settings extends Activity {
 			updateEditTextPrefSumm(KEY_PREF_QUICK_DIAL_NUMBER, disabledStr);
 			updateEditTextPrefSumm("pref_quick_dial_label", defaultStr);
 			updateDependencyFromEditTextPref(KEY_PREF_QUICK_DIAL_NUMBER, "pref_quick_dial_label");
+			updateDependencyFromCheckBoxPref(KEY_PREF_ENABLE_REBOOT, KEY_PREF_REBOOT_WORKAROUND, false);
 			
 			String aboutBefore = getResources().getString(R.string.app_info_before);
 			String aboutAfter = getResources().getString(R.string.app_info_after);
 			findPreference(KEY_PREF_APP_INFO).setSummary(aboutBefore + versionName + aboutAfter);
 			setIconVis();
 			
-			Preference email = (Preference) findPreference("pref_email");
-			email.setOnPreferenceClickListener(new OnPreferenceClickListener() {
-				public boolean onPreferenceClick(Preference preference){				   
-					DialogFragment df = new EmailDialogFragment();
-					df.show(getFragmentManager(), "APM_email_dialog");
-					return true;
-				}
-			});
+//			Preference email = (Preference) findPreference("pref_email");
+//			email.setOnPreferenceClickListener(new OnPreferenceClickListener() {
+//				public boolean onPreferenceClick(Preference preference){				   
+//					DialogFragment df = new EmailDialogFragment();
+//					df.show(getFragmentManager(), "APM_email_dialog");
+//					return true;
+//				}
+//			});
+			
+			if(!DualBoot.supportsDualboot()) {
+				PreferenceScreen pref_reboot_methods = (PreferenceScreen) findPreference("pref_reboot_methods");
+				findPreference("pref_rebootsub_system12").setDefaultValue(false);
+				pref_reboot_methods.removePreference(findPreference("pref_rebootsub_system12"));
+			}
+			
+			if (!Build.MANUFACTURER.toLowerCase().contains("sony")) {
+                final PreferenceScreen pref_reboot_methods = (PreferenceScreen) findPreference("pref_reboot_methods");
+                findPreference("pref_rebootsub_flashmode").setDefaultValue(false);
+                pref_reboot_methods.removePreference(findPreference("pref_rebootsub_flashmode"));
+            }
 		}
 		
 		@Override
@@ -198,6 +227,9 @@ public class Settings extends Activity {
 			}
 			if (key.equals("pref_quick_dial_label")){
 				updateEditTextPrefSumm(key, defaultStr);
+			}
+			if (key.equals(KEY_PREF_ENABLE_REBOOT)){
+				updateDependencyFromCheckBoxPref(KEY_PREF_ENABLE_REBOOT, KEY_PREF_REBOOT_WORKAROUND, false);
 			}
 	    }
 		
